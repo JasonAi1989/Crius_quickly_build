@@ -89,6 +89,132 @@ class Executor():
 
     def __build(self):
         self.__extract()
+        #pick up .c .cc files
+        srcL=[]
+        for f in self.fileList:
+            if f[-2:] == '.c' or f[-3:] == '.cc':
+                srcL.append(f)
+        fileds=dict()
+        for f in srcL:
+            path=os.path.dirname(f)
+            if path in fileds.keys() == False:
+                fileds[path] = dict()
+                fileds[path]['src']=list()
+                fileds[path]['obj']=dict()
+                fileds[path]['target']=dict()
+
+            fileds[path]['src'].append(f)
+
+            f1=f.replace('.cc', '.o')
+            f2=f.replace('.c', '.o')
+            if f1 != f:
+                fileds[path]['obj'][f1]='CC'
+            elif f2 != f:
+                fileds[path]['obj'][f2]='C'
+
+        #analysis Makefile
+        for k,v in fileds.items():
+            mk=k+'/Dir.mk'
+            if os.path.isfile(mk) == False:
+                del fileds[k]
+                continue
+            else:
+                fileds[k]['target']=self.__parseMK(mk)
+
+        # Grep make command from verbose build log
+        objD=dict()
+        targetD=dict()
+        for _,v in fileds.items():
+            objD.update(v['obj'])
+            targetD.update(v['target'])
+
+        objTypeD={'CC':['LibCCObj (', 'BinCCObj ('], 'C':['LibCObj (', 'BinCObj (']}
+        cmdL=[]
+        for k,v in objD.items():
+            cmd='grep \"'+k+'\" '+self.buildLog+ \
+            ' | grep -A 1 \"'+objTypeD[v][0]+ \
+            '\" | grep -v \"'+objTypeD[v][0]+'\"'
+            cmdL.append(cmd)
+
+            cmd='grep \"'+k+'\" '+self.buildLog+ \
+            ' | grep -A 1 \"'+objTypeD[v][1]+ \
+            '\" | grep -v \"'+objTypeD[v][1]+'\"'
+            cmdL.append(cmd)
+
+        targetTypeD={'LIB':'Lib (', 'BIN':'BIN ('}
+        numLinesD={'LIB':6, 'BIN':4}
+        for k,v in targetD.items():
+            cmd='gerp -A '+numLinesD[v]+' \"'+targetTypeD[v]+ \
+                '.*' + k + '\" ' + self.buildLog + \
+                ' | grep -v \"' +targetTypeD[v]+ \
+                ' |grep -v \"genver\" | grep -v \"mkdir\"'
+            cmdL.append(cmd)
+
+        dependcyL=[]
+        for cmd in cmdL:
+            fd=os.popen(cmd)
+            depency=fd.read()
+            fd.close()
+            if len(depency) > 0:
+                dependcyL.append(depency)
+
+        if self.__createScript(dependcyL):
+            fd=os.popen('./'+self.script)
+            msg=fd.read()
+            fd.close()
+            logging.info(msg)
+
+            fd=os.popen('rm -rf '+self.script)
+            msg=fd.read()
+            fd.close()
+            logging.info(msg)
+
+
+    def __createScript(self, dependcyL):
+        pass
+
+    def __parseMK(self, mkFile):
+        if os.path.isfile(mkFile):
+            cmd='gerp \"LIB :=\"|\"LIB:=\"|\"BIN :=\"|\"BIN:=\" ' + mkFile
+            fd = os.popen(cmd)
+            string = fd.read()
+            fd.close()
+            lineL=string.replace(' ','').split('\n')
+            while '' in lineL:
+                lineL.remove('')
+            target=dict()
+            for i in lineL:
+                l=i.split(':=')
+                if len(l)==2:
+                    t=l[1]
+                    if t[0:2] == '$(':
+                        t=t.replace('$(', '').replace(')', '')
+                        t=self.__getRealTarget(t)
+                    target[t]=l[0]
+
+            if len(target) == 0:
+                logging.warning('no target find')
+
+            return target
+
+    #just for lib
+    def __getRealTarget(self, fake):
+        if self.args.productName == '':
+            logging.error('miss product name for get real target')
+            return fake
+
+        defL=['build/products/'+self.args.productName+'/Make.mk', \
+                'ipos/legacy/pkt/sw/se/xc/bsd/Dir.mk']
+        for i in defL:
+            cmd='cat '+i+' grep '+fake+' | awk -f\'=\' \'{print $2}\''
+            fd=os.popen(cmd)
+            string=fd.read()
+            fd.close()
+            lib=os.path.basename(string).replace('.a', '.so.0.0')
+            if lib != '':
+                return lib
+
+        return fake
 
     def __extract(self):
         self.fileList = self.args.opts['default']
