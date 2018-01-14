@@ -96,7 +96,18 @@ class Executor():
         self.__extPatch()
         self.__extFileList()
 
+        self.fileList=list(set(self.fileList))
+
+        logging.info(self.fileList)
         print(self.fileList)
+
+        outputL=self.args.opts['-o']
+        if len(outputL)>0:
+            for i in outputL:
+                fd=open(i, 'w')
+                for j in self.fileList:
+                    fd.write(j)
+                fd.close()
 
     def __update(self):
         pass
