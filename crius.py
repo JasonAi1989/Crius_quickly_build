@@ -15,15 +15,32 @@ crius update [Product name] : update or create build log for the specific produc
 \n \
 Product Name:SF-RP-S9M SF-LC-S9M SF-RP-P1S SF-RP-P1L SF-RP-P0 SF-TDM1001\n"
 
+CFGDIR='~/.crius_quickly_build'
+CFGFILE=CFGDIR+'/init.conf'
+MKLOGDIR=CFGDIR+'/make_verbose'
+LOGDIR=CFGDIR+'/log'
+
 def globalInit():
-    logging.basicConfig(filename='example.log',level=logging.DEBUG)
+    if os.path.exists(CFGDIR) == False:
+        os.mkdir(CFGDIR, '0755')
+        os.mkdir(MKLOGDIR, '0755')
+        os.mkdir(LOGDIR, '0755')
+    if os.path.isfile(CFGFILE) == False:
+        initCfgFile()
+
+    logging.basicConfig(filename=LOGDIR+'/current.log',level=logging.DEBUG)
+
+def initCfgFile():
     pass
+def loadCfgFile():
+    pass
+
 def usage():
     print(USAGE)
 
-def logCheck():
-    return True
-    pass
+def buildProductVerbose(product):
+    return MKLOGDIR + '/' + product + '.mkv'
+
 def bye():
     pass
 
@@ -79,6 +96,12 @@ class Executor():
         self.args = args
         self.funcs={'build':self.__build, 'extract':self.__extract, 'update':self.__update}
         self.ws=os.getcwd()
+        self.flag='.crius_flag'
+        self.cfg = loadCfgFile()
+        self.script='qb.sh'
+        self.output='CRIUS_OUTPUT'
+        if len(args.opts['-O'])!=0:
+            self.output=args.opts['-O'][0]
 
     def run(self):
         if self.args.command in self.funcs:
@@ -88,7 +111,12 @@ class Executor():
             return False
 
     def __build(self):
+        if self.__mkvCheck() == False:
+            if self.__mkvCreate()==False:
+                return False
+
         self.__extract()
+
         #pick up .c .cc files
         srcL=[]
         for f in self.fileList:
@@ -131,12 +159,12 @@ class Executor():
         objTypeD={'CC':['LibCCObj (', 'BinCCObj ('], 'C':['LibCObj (', 'BinCObj (']}
         cmdL=[]
         for k,v in objD.items():
-            cmd='grep \"'+k+'\" '+self.buildLog+ \
+            cmd='grep \"'+k+'\" '+self.__mkvFile()+ \
             ' | grep -A 1 \"'+objTypeD[v][0]+ \
             '\" | grep -v \"'+objTypeD[v][0]+'\"'
             cmdL.append(cmd)
 
-            cmd='grep \"'+k+'\" '+self.buildLog+ \
+            cmd='grep \"'+k+'\" '+self.__mkvFile()+ \
             ' | grep -A 1 \"'+objTypeD[v][1]+ \
             '\" | grep -v \"'+objTypeD[v][1]+'\"'
             cmdL.append(cmd)
@@ -145,7 +173,7 @@ class Executor():
         numLinesD={'LIB':6, 'BIN':4}
         for k,v in targetD.items():
             cmd='gerp -A '+numLinesD[v]+' \"'+targetTypeD[v]+ \
-                '.*' + k + '\" ' + self.buildLog + \
+                '.*' + k + '\" ' + self.__mkvFile()+ \
                 ' | grep -v \"' +targetTypeD[v]+ \
                 ' |grep -v \"genver\" | grep -v \"mkdir\"'
             cmdL.append(cmd)
@@ -164,13 +192,50 @@ class Executor():
             fd.close()
             logging.info(msg)
 
-            fd=os.popen('rm -rf '+self.script)
-            msg=fd.read()
-            fd.close()
-            logging.info(msg)
+            os.remove(self.script)
+        return True
 
+    def __mkvFile(self):
+        return buildProductVerbose(self.args.productName)
+
+    def __mkvCheck(self):
+        return os.path.isfile(self.__mkvFile())
+
+    def __mkvCreate(self):
+        cmd='(make '+self.args.productName+'  VERBOSE=1 > '+ \
+            self.__mkvFile + \
+            ' && echo "1" > ' + self.flag + \
+            ') || echo "0" > ' + self.flag
+        fd = os.popen(cmd)
+        fd.close()
+        fd=open(self.flag, 'r')
+        msg=fd.read()
+        fd.close()
+        os.remove(self.flag)
+        if msg != '1':
+            logging.error('create build log failed for '+self.args.productName)
+            return False
+        else:
+            return True
+
+    def __mkvDelete(self):
+        os.remove(self.__mkvFile)
 
     def __createScript(self, dependcyL):
+        if os.path.isfile(self.script):
+            os.remove(self.script)
+
+        fd=open(self.script, 'w')
+        fd.write('cd ipos/legacy/pkt/\n')
+        for i in dependcyL:
+            fd.write(i)
+            fd.write('\n')
+
+        fd.write('cd -')
+        opfd=os.popen('cat .scratch | awk -F\':=\' \'{print $2}\'')
+        outputDir=opfd.read()
+        opfd.close()
+        fd.write('cd '+outputDir)
         pass
 
     def __parseMK(self, mkFile):
@@ -234,9 +299,16 @@ class Executor():
                 for j in self.fileList:
                     fd.write(j)
                 fd.close()
+        return True
 
     def __update(self):
-        pass
+        if self.__mkvCheck() == True:
+            self.__mkvDelete()
+
+        if self.__mkvCreate()==False:
+            return False
+        else:
+            return True
 
     def __extGit(self):
         l=self.args.opts['-g']
@@ -290,7 +362,5 @@ if __name__ == '__main__':
         exit()
 
     execute = Executor(arg)
-    if logCheck() == True:
-        execute.run()
-    else:
-        bye()
+    execute.run()
+    bye()
