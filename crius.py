@@ -126,39 +126,61 @@ class Executor():
         for f in self.fileList:
             if f[-2:] == '.c' or f[-3:] == '.cc':
                 srcL.append(f)
-        fileds=dict()
+                logging.info('c/c++:'+f)
+        if len(srcL) == 0:
+            logging.info('No c/c++ files')
+            print('No c/c++ files')
+            return True
+
+        #organize the src.obj,target into dict
+        fields=dict()
         for f in srcL:
             path=os.path.dirname(f)
-            if path in fileds.keys() == False:
-                fileds[path] = dict()
-                fileds[path]['src']=list()
-                fileds[path]['obj']=dict()
-                fileds[path]['target']=dict()
+            if (path in fields.keys()) == False:
+                logging.debug('create new field for path:'+path)
+                fields[path] = dict()
+                fields[path]['src']=list()
+                fields[path]['obj']=dict()
+                fields[path]['target']=dict()
+            else:
+                logging.debug('use old field for path:'+path)
 
-            fileds[path]['src'].append(f)
+            fields[path]['src'].append(f)
 
             f1=f.replace('.cc', '.o')
             f2=f.replace('.c', '.o')
             if f1 != f:
-                fileds[path]['obj'][f1]='CC'
+                f1=os.path.basename(f1)
+                fields[path]['obj'][f1]='CC'
             elif f2 != f:
-                fileds[path]['obj'][f2]='C'
+                f2=os.path.basename(f2)
+                fields[path]['obj'][f2]='C'
 
         #analysis Makefile
-        for k,v in fileds.items():
+        for k,v in fields.items():
             mk=k+'/Dir.mk'
+            logging.info('Dir.mk:'+mk)
             if os.path.isfile(mk) == False:
-                del fileds[k]
+                logging.info('no Dir.mk:'+mk)
+                del fields[k]
                 continue
             else:
-                fileds[k]['target']=self.__parseMK(mk)
+                fields[k]['target']=self.__parseMK(mk)
+
+        logging.info('fields:')
+        logging.info(fields)
 
         # Grep make command from verbose build log
         objD=dict()
         targetD=dict()
-        for _,v in fileds.items():
+        for _,v in fields.items():
             objD.update(v['obj'])
             targetD.update(v['target'])
+
+        logging.info('obj dirt:')
+        logging.info(objD)
+        logging.info('target dir')
+        logging.info(targetD)
 
         objTypeD={'CC':['LibCCObj (', 'BinCCObj ('], 'C':['LibCObj (', 'BinCObj (']}
         cmdL=[]
@@ -176,27 +198,16 @@ class Executor():
         targetTypeD={'LIB':'Lib (', 'BIN':'BIN ('}
         numLinesD={'LIB':6, 'BIN':4}
         for k,v in targetD.items():
-            cmd='gerp -A '+numLinesD[v]+' \"'+targetTypeD[v]+ \
-                '.*' + k + '\" ' + self.__mkvFile()+ \
-                ' | grep -v \"' +targetTypeD[v]+ \
-                ' |grep -v \"genver\" | grep -v \"mkdir\"'
+            logging.debug('target:'+k+';ttype:'+v)
+            cmd1='grep -A {0} \"{1}.*{2}\" {3} | grep -v \"{1}\" | grep -v \"genver\" | grep -v \"mkdir\"'
+            cmd=cmd1.format(numLinesD[v], targetTypeD[v], k, self.__mkvFile())
             cmdL.append(cmd)
 
-        dependcyL=[]
-        for cmd in cmdL:
-            fd=os.popen(cmd)
-            depency=fd.read()
-            fd.close()
-            if len(depency) > 0:
-                dependcyL.append(depency)
+        self.__createScript(cmdL)
+        self.__runScript()
+        self.__deleteScript()
+        self.__deployTarget(targetD)
 
-        if self.__createScript(dependcyL, targetD):
-            fd=os.popen('./'+self.script)
-            msg=fd.read()
-            fd.close()
-            logging.info(msg)
-
-            os.remove(self.script)
         return True
 
     def __mkvFile(self):
@@ -230,42 +241,102 @@ class Executor():
     def __mkvDelete(self):
         os.remove(self.__mkvFile())
 
-    def __createScript(self, dependcyL, targetD):
+    def __createScript(self, cmdL):
         if os.path.isfile(self.script):
             os.remove(self.script)
 
-        fd=open(self.script, 'w')
+        fd=open(self.script, 'w', 7)
         fd.write('cd ipos/legacy/pkt/\n')
+        fd.close()
 
         #write obj and target compile dependcy into file
-        for i in dependcyL:
-            fd.write(i)
-            fd.write('\n')
+        for cmd in cmdL:
+            logging.info(cmd)
+            print(cmd)
+            os.system(cmd + '>>' + self.script)
+            os.system('echo \'\n\' >>' + self.script)
 
-        fd.write('cd -')
+        os.system('chmod +x '+self.script)
 
-        opfd=os.popen('cat .scratch | awk -F\':=\' \'{print $2}\'')
-        outputDir=opfd.read()
-        opfd.close()
-        fd.write('cd '+outputDir)
+    def __runScript(self):
+        os.system('./'+self.script)
 
+    def __deleteScript(self):
+        os.remove(self.script)
+
+    def __deployTarget(self, targetD):
+        print('=======successfully=======')
+        libPathD=dict()
+        binPathD=dict()
         for target,ttype in targetD.items():
             cmd='find -type f -name ' + target
+            logging.info(cmd)
+
             opfd=os.popen(cmd)
-            paths=opfd.read()
+            string=opfd.read()
             opfd.close()
-            logging.info(paths)
-        pass
+            logging.info(string)
+
+            paths=string.split('\n')
+            while '' in paths:
+                paths.remove('')
+
+            obj=''
+            stage=''
+            for i in paths:
+                if i.find('legacy/obj') != -1:
+                    obj=i
+                else:
+                    stage=i
+            if ttype == 'LIB':
+                pathD=libPathD
+            else:
+                pathD=binPathD
+
+            pathD[obj]=stage
+
+        logging.info('lib path dict:')
+        logging.info(libPathD)
+        logging.info('bin path dict:')
+        logging.info(binPathD)
+
+        if os.path.exists(self.output):
+            os.system('rm -rf '+self.output)
+        os.system('mkdir '+self.output)
+
+        for obj,stage in libPathD.items():
+            print('lib obj:'+obj)
+            print('lib stage:'+stage)
+            os.system('cp '+obj+' '+stage)
+            os.system('cp '+obj+' '+self.output)
+
+        for obj,stage in binPathD.items():
+            print('bin obj: '+obj)
+            print('bin stage: '+stage)
+            os.system('md5sum '+obj+'| awk \'{print \$1;}\' >>'+obj)
+            os.system('cp '+obj+' '+stage)
+            os.system('cp '+obj+' '+self.output)
+
+        print('\nWe\'ve updated targets in obj and stage dir.')
+        print('Please find targets in dir:'+self.output)
+        logging.info('We\'ve updated targets in obj and stage dir.\n' + \
+                     'Please find targets in dir:'+self.output)
 
     def __parseMK(self, mkFile):
         if os.path.isfile(mkFile):
-            cmd='gerp \"LIB :=\"|\"LIB:=\"|\"BIN :=\"|\"BIN:=\" ' + mkFile
+            cmd='grep -E \"LIB :=|LIB:=|BIN :=|BIN:=\" ' + mkFile
+            logging.debug('run cmd:'+cmd)
             fd = os.popen(cmd)
             string = fd.read()
             fd.close()
+            logging.debug('targets:'+string)
             lineL=string.replace(' ','').split('\n')
             while '' in lineL:
                 lineL.remove('')
+
+            logging.info('target result:')
+            logging.info(lineL)
+
             target=dict()
             for i in lineL:
                 l=i.split(':=')
@@ -289,12 +360,15 @@ class Executor():
 
         defL=['build/products/'+self.args.productName+'/Make.mk', \
                 'ipos/legacy/pkt/sw/se/xc/bsd/Dir.mk']
+        logging.info('definition files:')
+        logging.info(defL)
+
         for i in defL:
-            cmd='cat '+i+' grep '+fake+' | awk -f\'=\' \'{print $2}\''
+            cmd='cat '+i+' |grep '+fake+' | awk -F \'=\' \'{print $2}\''
             fd=os.popen(cmd)
             string=fd.read()
             fd.close()
-            lib=os.path.basename(string).replace('.a', '.so.0.0')
+            lib=os.path.basename(string).replace('.a', '.so.0.0').strip('\n')
             if lib != '':
                 return lib
 
@@ -308,8 +382,10 @@ class Executor():
 
         self.fileList=list(set(self.fileList))
 
-        logging.info('file list:'+self.fileList)
-        print('file list:'+self.fileList)
+        logging.info('file list:')
+        logging.info(self.fileList)
+        print('file list:')
+        print(self.fileList)
 
         outputL=self.args.opts['-o']
         if len(outputL)>0:
