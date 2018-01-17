@@ -36,6 +36,7 @@ def globalInit():
 
 def initCfgFile():
     pass
+
 def loadCfgFile():
     pass
 
@@ -116,6 +117,17 @@ class Executor():
 
     def __build(self):
         if self.__mkvCheck() == False:
+            answer=input('\n\nThere doesn\'t exist make verbose for product ' + \
+                         self.args.productName + \
+                         ', do you want to create it?(y/n)[y] ') or 'y'
+            while True:
+                if answer=='n' or answer=='N':
+                    return True
+                elif answer=='y' or answer=='Y':
+                    break
+                else:
+                    answer=input('\nPlease input y or n ') or 'y'
+
             if self.__mkvCreate()==False:
                 return False
 
@@ -131,6 +143,18 @@ class Executor():
             logging.info('No c/c++ files')
             print('No c/c++ files')
             return True
+        elif len(srcL) > 20:
+            self.__dumpList(srcL)
+
+            answer=input('\n\nThere are '+len(srcL)+' c/c++ files,'+ \
+                ' are you sure to compile them all?(y/n)[n] ') or 'n'
+            while True:
+                if answer == 'n' or answer == 'N':
+                    return True
+                elif answer == 'y' or answer == 'Y':
+                    break;
+                else:
+                    answer=input('\nPlease input y or n ') or 'n'
 
         #organize the src.obj,target into dict
         fields=dict()
@@ -209,6 +233,10 @@ class Executor():
         self.__deployTarget(targetD)
 
         return True
+
+    def __dumpList(self, l):
+        for i in l:
+            print(i)
 
     def __mkvFile(self):
         return buildProductVerbose(self.args.productName)
