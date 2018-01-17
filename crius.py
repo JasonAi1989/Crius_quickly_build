@@ -15,16 +15,20 @@ crius update [Product name] : update or create build log for the specific produc
 \n \
 Product Name:SF-RP-S9M SF-LC-S9M SF-RP-P1S SF-RP-P1L SF-RP-P0 SF-TDM1001\n"
 
-CFGDIR='~/.crius_quickly_build'
+fd=os.popen('cd ~/ && pwd')
+HPATH=fd.read().strip('\n')
+fd.close()
+
+CFGDIR=HPATH+'/.crius_quickly_build'
 CFGFILE=CFGDIR+'/init.conf'
 MKLOGDIR=CFGDIR+'/make_verbose'
 LOGDIR=CFGDIR+'/log'
 
 def globalInit():
     if os.path.exists(CFGDIR) == False:
-        os.mkdir(CFGDIR, '0755')
-        os.mkdir(MKLOGDIR, '0755')
-        os.mkdir(LOGDIR, '0755')
+        os.mkdir(CFGDIR)
+        os.mkdir(MKLOGDIR)
+        os.mkdir(LOGDIR)
     if os.path.isfile(CFGFILE) == False:
         initCfgFile()
 
@@ -186,7 +190,7 @@ class Executor():
             if len(depency) > 0:
                 dependcyL.append(depency)
 
-        if self.__createScript(dependcyL):
+        if self.__createScript(dependcyL, targetD):
             fd=os.popen('./'+self.script)
             msg=fd.read()
             fd.close()
@@ -202,10 +206,14 @@ class Executor():
         return os.path.isfile(self.__mkvFile())
 
     def __mkvCreate(self):
-        cmd='(make '+self.args.productName+'  VERBOSE=1 > '+ \
-            self.__mkvFile + \
-            ' && echo "1" > ' + self.flag + \
-            ') || echo "0" > ' + self.flag
+        cmd='(make '+self.args.productName + ' VERBOSE=1 > '+ \
+            self.__mkvFile() + \
+            ' && echo \"1\" > ' + self.flag + \
+            ') || echo \"0\" > ' + self.flag
+
+        logging.info('run commnd:' + cmd)
+        print('run commnd:' + cmd)
+
         fd = os.popen(cmd)
         fd.close()
         fd=open(self.flag, 'r')
@@ -214,28 +222,39 @@ class Executor():
         os.remove(self.flag)
         if msg != '1':
             logging.error('create build log failed for '+self.args.productName)
+            self.__mkvDelete()
             return False
         else:
             return True
 
     def __mkvDelete(self):
-        os.remove(self.__mkvFile)
+        os.remove(self.__mkvFile())
 
-    def __createScript(self, dependcyL):
+    def __createScript(self, dependcyL, targetD):
         if os.path.isfile(self.script):
             os.remove(self.script)
 
         fd=open(self.script, 'w')
         fd.write('cd ipos/legacy/pkt/\n')
+
+        #write obj and target compile dependcy into file
         for i in dependcyL:
             fd.write(i)
             fd.write('\n')
 
         fd.write('cd -')
+
         opfd=os.popen('cat .scratch | awk -F\':=\' \'{print $2}\'')
         outputDir=opfd.read()
         opfd.close()
         fd.write('cd '+outputDir)
+
+        for target,ttype in targetD.items():
+            cmd='find -type f -name ' + target
+            opfd=os.popen(cmd)
+            paths=opfd.read()
+            opfd.close()
+            logging.info(paths)
         pass
 
     def __parseMK(self, mkFile):
@@ -289,8 +308,8 @@ class Executor():
 
         self.fileList=list(set(self.fileList))
 
-        logging.info(self.fileList)
-        print(self.fileList)
+        logging.info('file list:'+self.fileList)
+        print('file list:'+self.fileList)
 
         outputL=self.args.opts['-o']
         if len(outputL)>0:
