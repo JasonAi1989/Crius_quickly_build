@@ -332,6 +332,10 @@ class Executor():
             os.system('rm -rf '+self.output)
         os.system('mkdir '+self.output)
 
+        if (not libPathD) and (not binPathD):
+            print('Didn\'t find any target')
+            return
+
         for obj,stage in libPathD.items():
             print('lib obj:'+obj)
             print('lib stage:'+stage)
