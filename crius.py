@@ -253,12 +253,12 @@ class Executor():
         logging.info('run commnd:' + cmd)
         print('run commnd:' + cmd)
 
-        fd = os.popen(cmd)
-        fd.close()
+        os.system(cmd)
         fd=open(self.flag, 'r')
-        msg=fd.read()
+        msg=fd.read().strip('\n')
         fd.close()
         os.remove(self.flag)
+        logging.debug('read flag:'+msg)
         if msg != '1':
             logging.error('create build log failed for '+self.args.productName)
             self.__mkvDelete()
@@ -387,7 +387,8 @@ class Executor():
             return fake
 
         defL=['build/products/'+self.args.productName+'/Make.mk', \
-                'ipos/legacy/pkt/sw/se/xc/bsd/Dir.mk']
+                'ipos/legacy/pkt/sw/se/xc/bsd/Dir.mk', \
+              'forwarding/Dir.mk']
         logging.info('definition files:')
         logging.info(defL)
 
