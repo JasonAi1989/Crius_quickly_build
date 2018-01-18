@@ -6,6 +6,7 @@ USAGE="crius <build> [Product name] [files name with full path]\n \
             -g [git commits id] : extract file names from the specific commit id\n \
             -p [patches name] : extract file names from the specific patch\n \
             -l [file including a file list] : extract file names from the specific file\n \
+            -m [local verbose file] : use the local verbose file instead of default\
             -O [output dir] : default is CRIUS_OBJ\n \
 crius extract\n \
             -g [git commits id] : extract file names from the specific commit id\n \
@@ -14,6 +15,8 @@ crius extract\n \
 crius update [Product name] : update or create build log for the specific product\n \
 \n \
 Product Name:SF-RP-S9M SF-LC-S9M SF-RP-P1S SF-RP-P1L SF-RP-P0 SF-TDM1001\n"
+
+VERSION='Beta 1.0'
 
 fd=os.popen('cd ~/ && pwd')
 HPATH=fd.read().strip('\n')
@@ -43,6 +46,9 @@ def loadCfgFile():
 def usage():
     print(USAGE)
 
+def version():
+    print(VERSION)
+
 def buildProductVerbose(product):
     return MKLOGDIR + '/' + product + '.mkv'
 
@@ -59,7 +65,13 @@ class Args():
         index+=1
 
         self.command = argList[index]
-        if self.command == 'extract' \
+        if self.command == '--version' or self.command == '-v':
+            version()
+            sys.exit()
+        elif self.command == '--help' or self.command == '-h':
+            usage()
+            sys.exit()
+        elif self.command == 'extract' \
                 or self.command == 'update' \
                 or self.command == 'build':
             index+=1
@@ -107,6 +119,8 @@ class Executor():
         self.output='CRIUS_OUTPUT'
         if len(args.opts['-O'])!=0:
             self.output=args.opts['-O'][0]
+        if len(args.opts['-m']!=0):
+            self.localMkv=args.opts['-m'][0]
 
     def run(self):
         if self.args.command in self.funcs:
@@ -239,7 +253,10 @@ class Executor():
             print(i)
 
     def __mkvFile(self):
-        return buildProductVerbose(self.args.productName)
+        if self.localMkv and os.path.isfile(self.localMkv):
+            return self.localMkv
+        else:
+            return buildProductVerbose(self.args.productName)
 
     def __mkvCheck(self):
         return os.path.isfile(self.__mkvFile())
@@ -264,6 +281,8 @@ class Executor():
             self.__mkvDelete()
             return False
         else:
+            logging.info('create build log successfully for '+self.args.productName)
+            print('create build log successfully for '+self.args.productName)
             return True
 
     def __mkvDelete(self):
