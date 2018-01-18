@@ -6,16 +6,16 @@ USAGE="crius <build> [Product name] [files name with full path]\n \
             -g [git commits id] : extract file names from the specific commit id\n \
             -p [patches name] : extract file names from the specific patch\n \
             -l [file including a file list] : extract file names from the specific file\n \
-            -m [local verbose file] : use the local verbose file instead of default\
+            -m [local verbose file] : use the local verbose file instead of default\n \
             -O [output dir] : default is CRIUS_OBJ\n \
 crius extract\n \
             -g [git commits id] : extract file names from the specific commit id\n \
             -p [patches name] : extract file names from the specific patch\n \
             -o [output file name] : write the file names into the specific file\n \
 crius update [Product name] : update or create build log for the specific product\n \
-\n \
-Product Name:SF-RP-S9M SF-LC-S9M SF-RP-P1S SF-RP-P1L SF-RP-P0 SF-TDM1001\n"
+"
 
+PRODUCTS=['SF-RP-S9M', 'SF-LC-S9M', 'SF-RP-P1S', 'SF-RP-P1L', 'SF-RP-P0', 'SF-TDM1001']
 VERSION='Beta 1.0'
 
 fd=os.popen('cd ~/ && pwd')
@@ -45,6 +45,11 @@ def loadCfgFile():
 
 def usage():
     print(USAGE)
+    pn='\nProducts: '
+    for i in PRODUCTS:
+        pn+=i+' '
+    pn+='\n'
+    print(pn)
 
 def version():
     print(VERSION)
@@ -84,7 +89,7 @@ class Args():
             self.productName = argList[index]
             index+=1
 
-        self.opts={'-g':[], '-p':[], '-o':[], '-O':[], '-l':[], 'default':[]}
+        self.opts={'-g':[], '-p':[], '-o':[], '-O':[], '-l':[], '-m':[], 'default':[]}
         cur = self.opts['default']
         for i in range(index, len(argList)):
             if argList[i] in self.opts:
@@ -98,15 +103,10 @@ class Args():
 
     def isValid(self):
         #check product name
-        if self.productName != 'SF-RP-S9M' \
-                and self.productName != 'SF-LC-S9M' \
-                and self.productName != 'SF-RP-P1S' \
-                and self.productName != 'SF-RP-P1L' \
-                and self.productName != 'SF-RP-P0' \
-                and self.productName != 'SF-TDM1001':
-            return False
-        else:
+        if self.command == 'extract':
             return True
+
+        return (self.productName in PRODUCTS)
 
 class Executor():
     def __init__(self, args):
@@ -119,7 +119,8 @@ class Executor():
         self.output='CRIUS_OUTPUT'
         if len(args.opts['-O'])!=0:
             self.output=args.opts['-O'][0]
-        if len(args.opts['-m']!=0):
+        self.localMkv=''
+        if len(args.opts['-m'])!=0:
             self.localMkv=args.opts['-m'][0]
 
     def run(self):
@@ -438,14 +439,14 @@ class Executor():
         logging.info('file list:')
         logging.info(self.fileList)
         print('file list:')
-        print(self.fileList)
+        self.__dumpList(self.fileList)
 
         outputL=self.args.opts['-o']
         if len(outputL)>0:
             for i in outputL:
                 fd=open(i, 'w')
                 for j in self.fileList:
-                    fd.write(j)
+                    fd.write(j+'\n')
                 fd.close()
         return True
 
