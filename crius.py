@@ -279,6 +279,7 @@ class Executor():
         if msg != '1':
             logging.error('create build log failed for '+self.args.productName)
             self.__mkvDelete()
+            print('\n\ncreate build log failed for '+self.args.productName)
             return False
         else:
             logging.info('create build log successfully for '+self.args.productName)
