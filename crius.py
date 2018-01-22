@@ -315,32 +315,26 @@ class Executor():
 
     def __deployTarget(self, targetD):
         print('=======successfully=======')
+        fd=os.popen('cat .scratch | awk -F\':=\' \'{print $2}\'')
+        string=fd.read()
+        fd.close()
+        originOutput=string.strip('\n')
+
         libPathD=dict()
         binPathD=dict()
+        targetTypeD={'BIN':'Bin', 'LIB':'Lib'}
         for target,ttype in targetD.items():
-            cmd='find -type f -name ' + target
-            logging.info(cmd)
-
-            opfd=os.popen(cmd)
-            string=opfd.read()
-            opfd.close()
-            logging.info(string)
-
-            paths=string.split('\n')
-            while '' in paths:
-                paths.remove('')
-
-            obj=''
-            stage=''
-            for i in paths:
-                if i.find('legacy/obj') != -1:
-                    obj=i
-                else:
-                    stage=i
             if ttype == 'LIB':
                 pathD=libPathD
             else:
                 pathD=binPathD
+
+            obj='{0}/legacy/obj/{1}-linux-armv8/{2}/{3}'.format( \
+                    originOutput, self.args.productName.lower(), \
+                    targetTypeD[ttype], target)
+            stage='{0}/{1}/stage/opt/ipos/{2}/{3}'.format( \
+                    originOutput, self.args.productName, \
+                    ttype.lower(), target)
 
             pathD[obj]=stage
 
@@ -358,15 +352,23 @@ class Executor():
             return
 
         for obj,stage in libPathD.items():
+            if os.path.isfile(obj) == False:
+                print('Didn\'t generate the lib: ', obj)
+                continue
+
             print('lib obj:'+obj)
             print('lib stage:'+stage)
             os.system('cp '+obj+' '+stage)
             os.system('cp '+obj+' '+self.output)
 
         for obj,stage in binPathD.items():
+            if os.path.isfile(obj) == False:
+                print('Didn\'t generate the bin: ', obj)
+                continue
+
             print('bin obj: '+obj)
             print('bin stage: '+stage)
-            os.system('md5sum '+obj+'| awk \'{print \$1;}\' >>'+obj)
+            os.system('md5sum '+obj+'| awk \'{print $1}\' >>'+obj)
             os.system('cp '+obj+' '+stage)
             os.system('cp '+obj+' '+self.output)
 
@@ -392,6 +394,9 @@ class Executor():
 
             target=dict()
             for i in lineL:
+                if i.find('#') != -1:
+                    continue
+
                 l=i.split(':=')
                 if len(l)==2:
                     t=l[1]
