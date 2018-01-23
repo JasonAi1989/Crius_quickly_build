@@ -223,24 +223,53 @@ class Executor():
 
         objTypeD={'CC':['LibCCObj (', 'BinCCObj ('], 'C':['LibCObj (', 'BinCObj (']}
         cmdL=[]
+        objCmdL=[]
+        targetCmdL=[]
         for k,v in objD.items():
             cmd='grep \"'+k+'\" '+self.__mkvFile()+ \
             ' | grep -A 1 \"'+objTypeD[v][0]+ \
             '\" | grep -v \"'+objTypeD[v][0]+'\"'
-            cmdL.append(cmd)
+            if self.__testCmd(cmd):
+                objCmdL.append(cmd)
 
             cmd='grep \"'+k+'\" '+self.__mkvFile()+ \
             ' | grep -A 1 \"'+objTypeD[v][1]+ \
             '\" | grep -v \"'+objTypeD[v][1]+'\"'
-            cmdL.append(cmd)
+            if self.__testCmd(cmd):
+                objCmdL.append(cmd)
 
         targetTypeD={'LIB':'Lib (', 'BIN':'BIN ('}
         numLinesD={'LIB':6, 'BIN':4}
+        invalidKeyL=[]
         for k,v in targetD.items():
             logging.debug('target:'+k+';ttype:'+v)
             cmd1='grep -A {0} \"{1}.*{2}\" {3} | grep -v \"{1}\" | grep -v \"genver\" | grep -v \"mkdir\"'
             cmd=cmd1.format(numLinesD[v], targetTypeD[v], k, self.__mkvFile())
-            cmdL.append(cmd)
+            if self.__testCmd(cmd):
+                targetCmdL.append(cmd)
+            else:
+                invalidKeyL.append(k)
+
+        for i in invalidKeyL:
+            logging.info('delete invalid element {0}:{1}'.format(i, targetD[i]))
+            del targetD[i]
+
+        if objCmdL:
+            pass
+        else:
+            print('There isn\'t any obj dependency.')
+            logging.info('There isn\'t any obj dependency.')
+            return False
+
+        if targetCmdL:
+            pass
+        else:
+            print('There isn\'t any target dependency.')
+            logging.info('There isn\'t any target dependency.')
+            return False
+
+        cmdL.extend(objCmdL)
+        cmdL.extend(targetCmdL)
 
         self.__createScript(cmdL)
         self.__runScript()
@@ -248,6 +277,16 @@ class Executor():
         self.__deployTarget(targetD)
 
         return True
+
+    def __testCmd(self, cmd):
+        fd=os.popen(cmd)
+        msg=fd.read()
+        fd.close()
+
+        if msg:
+            return True
+        else:
+            return False
 
     def __dumpList(self, l):
         for i in l:
@@ -356,8 +395,8 @@ class Executor():
                 print('Didn\'t generate the lib: ', obj)
                 continue
 
-            print('lib obj:'+obj)
-            print('lib stage:'+stage)
+            print('lib obj: '+obj)
+            print('lib stage: '+stage)
             os.system('cp '+obj+' '+stage)
             os.system('cp '+obj+' '+self.output)
 
